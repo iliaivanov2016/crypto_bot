@@ -1,0 +1,19 @@
+Bybit
+https://bybit-exchange.github.io/docs/v5/guide
+
+https://github.com/bybit-exchange/api-usage-examples
+
+https://github.com/bybit-exchange/QuickStartWithPostman
+
+
+Mexc
+https://www.mexc.com/api-docs/spot-v3/introduction
+X-MEXC-APIKEY	Access key
+(HMAC SHA256)
+    $ curl -H "X-MEXC-APIKEY: mx0aBYs33eIilxBWC5" -X POST 'https://api.mexc.com/api/v3/order' -d 'symbol=BTCUSDT&side=BUY&type=LIMIT&quantity=1&price=11&recvWindow=5000&timestamp=1644489390087&signature=323c96ab85a745712e95e63cad28903dd8292e4a905e99c4ee3932023843a117'
+
+Gate
+
+
+
+https://www.npmjs.com/package/js-sha256
