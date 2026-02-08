@@ -75,7 +75,7 @@ function sign_gate(method, url, query_string="", payload_string=""){
         "Timestamp":    t,
         "SIGN":         sign        
     };
-    console.log("s = "+s+" sign = "+sign, request_headers);
+    //console.log("s = "+s+" sign = "+sign, request_headers);
     return request_headers;
 }
 
@@ -105,13 +105,12 @@ async function test_gate(){
         headers: sign_gate("GET", prefix + endpoint, "", "")
     };
     
-    console.log(url, args);    
+    //console.log(url, args);    
     
     res = await axios.get(url, args);
     
     fs.writeFileSync("test_gate_futures.json", JSON.stringify(res.data));
     
-    process.exit(0);
 }
 
 async function test_mexc(){
@@ -129,7 +128,6 @@ console.log(url, args);
     
 console.log(res);    
     fs.writeFileSync("test.json", JSON.stringify(res.data));
-    process.exit(0);
 }
 
 async function save_mexc_futures_price(data){
@@ -204,26 +202,29 @@ async function run_mexc(){
 
 async function save_gate_spot_price(data){
     const s = (""+data.currency_pair).trim();    
-    if ((s.indexOf("USDT") >= 0) && (data.volume > 0)){
+console.log(">save_gate_spot_price",s,data);    
+    if ((s.indexOf("_USDT") >= 0) && (data.base_volume > 0)){
         const sql = "INSERT INTO prices_spot (token,exchange_id,price,change_percent,run_id) VALUES ('"
             +(""+s.replace('_USDT','')).trim()+"',"
             +exchange_data.GATE.id+","
             +data.last+","
             +(data.change_percentage)+","
             +run_id+")";
+        console.log(sql);
         await pool.query(sql);
     }
 }
 
 async function save_gate_futures_price(data){
     const s = (""+data.name).trim();    
-    if ((s.indexOf("USDT") >= 0) && (data.volume > 0)){
+    if (s.indexOf("_USDT") >= 0){
         const sql = "INSERT INTO prices_futures (token,exchange_id,price,funding_rate,run_id) VALUES ('"
             +(""+s.replace('_USDT','')).trim()+"',"
             +exchange_data.GATE.id+","
             +data.index_price+","
             +(data.funding_rate*100)+","
             +run_id+")";
+        console.log(sql);
         await pool.query(sql);
     }
 }
@@ -231,10 +232,33 @@ async function save_gate_futures_price(data){
 async function run_gate(){
     console.log(getDateTime(), ">run_gate run_id = " + run_id, getDateTime());    
     
-    var args = null, sql, res, url, endpoint;
+    var args = null, sql, res, url, endpoint, data;
     const prefix = "/api/v4";
     
     endpoint = "/spot/tickers";
+    
+    url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
+    args = {
+        headers: sign_gate("GET", prefix + endpoint, "", "")
+    };
+    
+//    console.log(url, args);    
+    
+    res = await axios.get(url, args);
+    
+console.log("gate spot l = "+res.data.length);    
+    try {
+        await Promise.all(
+            res.data.map(async (d) => {
+                await save_gate_spot_price(d);
+            })
+        );
+    } catch(e){
+        throw new Error("Failed to get Gate spot prices: \n"+url+"\n"+e.message);
+    }       
+
+    // FUTURES
+    endpoint = "/futures/usdt/contracts";
     
     url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
     args = {
@@ -245,16 +269,17 @@ async function run_gate(){
     
     res = await axios.get(url, args);
     
-    if (res.data){
+
+console.log("gate futures l = "+res.data.length);    
+    try {
         await Promise.all(
             res.data.map(async (d) => {
-                await save_gate_spot_price(d);
+                await save_gate_futures_price(d);
             })
         );
-    } else {
-        throw new Error("Failed to get Gate spot prices: \n"+url);
+    } catch(e){
+        throw new Error("Failed to get Gate futures prices: \n"+url+"\n"+e.message);
     }       
-    
     
 }
 
@@ -275,20 +300,23 @@ async function run(){
         const res = await pool.query(sql, []);
         run_id = parseInt(res.rows[0].run_id);
         
+        
+        console.log("exchange_data",exchange_data);
+        
         for (var key in exchange_data){
             if (key == "MEXC") {
                 await run_mexc();
-                sql = "UPDATE runs SET  progress='Mexc Done!' WHERE id = " + run_id;
+                sql = "UPDATE runs SET progress='Mexc Done!' WHERE id = " + run_id;
                 await pool.query(sql);                
             }
             if (key == "GATE") {
                 await run_gate();
-                sql = "UPDATE runs SET  progress='Gate Done!' WHERE id = " + run_id;
+                sql = "UPDATE runs SET progress='Gate Done!' WHERE id = " + run_id;
                 await pool.query(sql);                
             }
             if (key == "BYBIT") {
                 await run_bybit();
-                sql = "UPDATE runs SET  progress='Bybit Done!' WHERE id = " + run_id;
+                sql = "UPDATE runs SET progress='Bybit Done!' WHERE id = " + run_id;
                 await pool.query(sql);                
             }
         }
@@ -297,7 +325,7 @@ async function run(){
 console.log(sql);        
         await pool.query(sql);
         
-        sql = "DELETE FROM runs WHERE run_id < " + (run_id-1);
+        sql = "DELETE FROM runs WHERE id < " + (run_id-1);
 console.log(sql);        
         await pool.query(sql);
 
