@@ -1,5 +1,7 @@
 /*
  * node crypto_bot.js > log.txt
+ * cd /var/node/crypto_bot
+ * 
  */
 import fs from 'fs';
 import http from 'http';
@@ -8,6 +10,8 @@ import { fileURLToPath } from 'url';
 import { Pool } from 'pg'
 import cmd from 'node-cmd';
 import axios from "axios";
+import { sha256, sha224 } from 'js-sha256';
+import crypto from 'crypto';
 
 const version = "1.0";
 
@@ -58,6 +62,56 @@ async function init(){
     }
         
   //  console.log("exchanges", exchange_data);
+}
+
+function sign_gate(method, url, query_string="", payload_string=""){
+    var t = Math.round(new Date().getTime() / 1000);
+    var s = method + "\n" + url + "\n" + query_string + "\n" + payload_string + "\n" + t;    
+    var sign = crypto.createHash('sha512').update(s).digest('hex');
+    const request_headers = { 
+        "Accept":       'application/json', 
+        "Content-type": 'application/json',
+        "KEY":          exchange_data.GATE.key,
+        "Timestamp":    t,
+        "SIGN":         sign        
+    };
+    console.log("s = "+s+" sign = "+sign, request_headers);
+    return request_headers;
+}
+
+async function test_gate(){
+    var args = null, sql, res, url, endpoint;
+    const prefix = "/api/v4";
+    
+    //url = exchange_data.MEXC.settings.api_url + "v3/ticker/24hr";
+    endpoint = "/spot/tickers";
+    
+    url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
+    args = {
+        headers: sign_gate("GET", prefix + endpoint, "", "")
+    };
+    
+    console.log(url, args);    
+    
+    res = await axios.get(url, args);
+    
+    fs.writeFileSync("test_gate_spot.json", JSON.stringify(res.data));
+    
+    
+    endpoint = "/futures/usdt/contracts";
+    
+    url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
+    args = {
+        headers: sign_gate("GET", prefix + endpoint, "", "")
+    };
+    
+    console.log(url, args);    
+    
+    res = await axios.get(url, args);
+    
+    fs.writeFileSync("test_gate_futures.json", JSON.stringify(res.data));
+    
+    process.exit(0);
 }
 
 async function test_mexc(){
@@ -148,7 +202,59 @@ async function run_mexc(){
     console.log(getDateTime(), "<run_mexc run_id = " + run_id, getDateTime());    
 }
 
+async function save_gate_spot_price(data){
+    const s = (""+data.currency_pair).trim();    
+    if ((s.indexOf("USDT") >= 0) && (data.volume > 0)){
+        const sql = "INSERT INTO prices_spot (token,exchange_id,price,change_percent,run_id) VALUES ('"
+            +(""+s.replace('_USDT','')).trim()+"',"
+            +exchange_data.GATE.id+","
+            +data.last+","
+            +(data.change_percentage)+","
+            +run_id+")";
+        await pool.query(sql);
+    }
+}
+
+async function save_gate_futures_price(data){
+    const s = (""+data.name).trim();    
+    if ((s.indexOf("USDT") >= 0) && (data.volume > 0)){
+        const sql = "INSERT INTO prices_futures (token,exchange_id,price,funding_rate,run_id) VALUES ('"
+            +(""+s.replace('_USDT','')).trim()+"',"
+            +exchange_data.GATE.id+","
+            +data.index_price+","
+            +(data.funding_rate*100)+","
+            +run_id+")";
+        await pool.query(sql);
+    }
+}
+
 async function run_gate(){
+    console.log(getDateTime(), ">run_gate run_id = " + run_id, getDateTime());    
+    
+    var args = null, sql, res, url, endpoint;
+    const prefix = "/api/v4";
+    
+    endpoint = "/spot/tickers";
+    
+    url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
+    args = {
+        headers: sign_gate("GET", prefix + endpoint, "", "")
+    };
+    
+    console.log(url, args);    
+    
+    res = await axios.get(url, args);
+    
+    if (res.data){
+        await Promise.all(
+            res.data.map(async (d) => {
+                await save_gate_spot_price(d);
+            })
+        );
+    } else {
+        throw new Error("Failed to get Gate spot prices: \n"+url);
+    }       
+    
     
 }
 
@@ -160,6 +266,8 @@ async function run(){
     var sql;
     is_running = true;
     try {
+        console.log(getDateTime(), ">run", getDateTime());    
+        
         sql = "INSERT INTO runs(progress) VALUES('starting...')";
         await pool.query(sql);
         
@@ -170,14 +278,39 @@ async function run(){
         for (var key in exchange_data){
             if (key == "MEXC") {
                 await run_mexc();
+                sql = "UPDATE runs SET  progress='Mexc Done!' WHERE id = " + run_id;
+                await pool.query(sql);                
             }
             if (key == "GATE") {
                 await run_gate();
+                sql = "UPDATE runs SET  progress='Gate Done!' WHERE id = " + run_id;
+                await pool.query(sql);                
             }
             if (key == "BYBIT") {
                 await run_bybit();
+                sql = "UPDATE runs SET  progress='Bybit Done!' WHERE id = " + run_id;
+                await pool.query(sql);                
             }
         }
+
+        sql = "UPDATE runs SET finished = NOW(), progress='All Done!' WHERE id = " + run_id;
+console.log(sql);        
+        await pool.query(sql);
+        
+        sql = "DELETE FROM runs WHERE run_id < " + (run_id-1);
+console.log(sql);        
+        await pool.query(sql);
+
+        sql = "DELETE FROM prices_futures WHERE run_id < " + (run_id-1);
+console.log(sql);        
+        await pool.query(sql);
+        
+        sql = "DELETE FROM prices_spot WHERE run_id < " + (run_id-1);
+console.log(sql);        
+        await pool.query(sql);
+        
+        console.log(getDateTime(), "<run", getDateTime());    
+        
     } catch(e){
         console.log(getDateTime(), "<crypto_bot ERROR in run! \n"+e.message, getDateTime());    
         process.exit(0);
@@ -190,7 +323,7 @@ async function run(){
 }
 
 async function check_run(){
-    if (!is_running) {
+    if (!is_running) {        
         const sql = "SELECT COUNT(*) AS qty FROM runs WHERE finished::time with time zone >= current_time - interval '" + process.env.period_minutes + "' minute";
 
         console.log("sql", sql);    
@@ -207,6 +340,8 @@ new Promise(async function (resolve, reject) {
     console.log(getDateTime(), ">crypto_bot main version = " + version, getDateTime());    
     await init();
     
+    
+   // await test_gate();
     //await test_mexc();
     
     setInterval(async function(){

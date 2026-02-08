@@ -60,3 +60,4 @@ SELECT * FROM prices_futures;
 DELETE FROM runs;
 DELETE FROM prices_futures;
 
+UPDATE exchanges SET settings = '{"api_url":"https://api.gateio.ws"}' WHERE id = 3;

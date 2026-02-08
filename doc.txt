@@ -17,3 +17,24 @@ Gate
 
 
 https://www.npmjs.com/package/js-sha256
+
+
+
+
+
+ALTER USER postgres with encrypted password 'Zasada202^';
+'Zasada202^
+
+psql --host 13.49.102.247 --username postgres --password  --dbname crypto_db
+
+https://documentation.ubuntu.com/server/how-to/databases/install-postgresql/
+
+// token info
+url = exchange_data.MEXC.settings.api_url + "v3/exchangeInfo";
+
+// spot price
+url = exchange_data.MEXC.settings.api_url + "v3/ticker/24hr";
+// futures price
+url = exchange_data.MEXC.settings.api_url + "v1/contract/ticker";
+
+select * from information_schema.tables
