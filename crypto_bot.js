@@ -1,7 +1,8 @@
 /*
  * node crypto_bot.js > log.txt
  * cd /var/node/crypto_bot
- * 
+ * pm2 start /var/node/crypto_bot/crypto_bot.js -o /var/node/crypto_bot/log.txt -e /var/node/crypto_bot/errors.txt --name="crypto_bot"
+ * https://www.ttbgrossist.com/spread.txt
  */
 import fs from 'fs';
 import http from 'http';
@@ -19,6 +20,7 @@ var pool = null;
 var exchange_data;
 var is_running = false;
 var run_id = 0;
+var spread_data = [];
 
 function getDateTime() {
     var dt = new Date();
@@ -95,7 +97,7 @@ async function test_gate(){
     
     res = await axios.get(url, args);
     
-    fs.writeFileSync("test_gate_spot.json", JSON.stringify(res.data));
+    //fs.writeFileSync("test_gate_spot.json", JSON.stringify(res.data));
     
     
     endpoint = "/futures/usdt/contracts";
@@ -109,7 +111,7 @@ async function test_gate(){
     
     res = await axios.get(url, args);
     
-    fs.writeFileSync("test_gate_futures.json", JSON.stringify(res.data));
+    //fs.writeFileSync("test_gate_futures.json", JSON.stringify(res.data));
     
 }
 
@@ -127,7 +129,7 @@ console.log(url, args);
     res = await axios.get(url, args);
     
 console.log(res);    
-    fs.writeFileSync("test.json", JSON.stringify(res.data));
+    //fs.writeFileSync("test.json", JSON.stringify(res.data));
 }
 
 async function save_mexc_futures_price(data){
@@ -202,7 +204,6 @@ async function run_mexc(){
 
 async function save_gate_spot_price(data){
     const s = (""+data.currency_pair).trim();    
-console.log(">save_gate_spot_price",s,data);    
     if ((s.indexOf("_USDT") >= 0) && (data.base_volume > 0)){
         const sql = "INSERT INTO prices_spot (token,exchange_id,price,change_percent,run_id) VALUES ('"
             +(""+s.replace('_USDT','')).trim()+"',"
@@ -210,7 +211,6 @@ console.log(">save_gate_spot_price",s,data);
             +data.last+","
             +(data.change_percentage)+","
             +run_id+")";
-        console.log(sql);
         await pool.query(sql);
     }
 }
@@ -224,7 +224,6 @@ async function save_gate_futures_price(data){
             +data.index_price+","
             +(data.funding_rate*100)+","
             +run_id+")";
-        console.log(sql);
         await pool.query(sql);
     }
 }
@@ -246,7 +245,7 @@ async function run_gate(){
     
     res = await axios.get(url, args);
     
-console.log("gate spot l = "+res.data.length);    
+//console.log("gate spot l = "+res.data.length);    
     try {
         await Promise.all(
             res.data.map(async (d) => {
@@ -265,12 +264,12 @@ console.log("gate spot l = "+res.data.length);
         headers: sign_gate("GET", prefix + endpoint, "", "")
     };
     
-    console.log(url, args);    
+//    console.log(url, args);    
     
     res = await axios.get(url, args);
     
 
-console.log("gate futures l = "+res.data.length);    
+//console.log("gate futures l = "+res.data.length);    
     try {
         await Promise.all(
             res.data.map(async (d) => {
@@ -280,11 +279,119 @@ console.log("gate futures l = "+res.data.length);
     } catch(e){
         throw new Error("Failed to get Gate futures prices: \n"+url+"\n"+e.message);
     }       
+    console.log(getDateTime(), "<run_gate run_id = " + run_id, getDateTime());    
     
 }
 
 async function run_bybit(){
     
+}
+
+async function get_spread_data(token){
+    var sql, res, s, f;
+    const min_spread = parseFloat(process.env.min_spread * 100);
+    try {
+        sql = `SELECT 
+                token, price, (SELECT name FROM exchanges WHERE id = exchange_id) AS exchange, change_percent
+                FROM prices_spot 
+                WHERE token = '`+token+`'                                   
+                ORDER BY price
+                `;        
+        //console.log("1.get_spread_data token = "+token, sql);
+        res = await pool.query(sql);
+        //console.log("1.get_spread_data token = "+token, res.rows);
+        if (res.rows.length >= 2){
+            var d_min = res.rows.shift();
+            var d_max = res.rows.pop();
+            var spread = Math.round( (parseFloat(d_max.price) - parseFloat(d_min.price)) / parseFloat(d_max.price) * 100, 1);
+            if (spread >= min_spread) {
+                s = d_min.token+"\t"+d_min.exchange+" BUY "+parseFloat(d_min.price)+"\t"+d_max.exchange+" SELL "+ parseFloat(d_max.price)+ "\tSPREAD: "+spread+"\tCHANGE 24h: "+parseFloat(d_min.change_percent).toFixed(2);
+                spread_data.push({"str": s, "spread": spread });
+            }
+        }
+        
+        sql = `SELECT 
+                token, price, (SELECT name FROM exchanges WHERE id = exchange_id) AS exchange, funding_rate 
+                FROM prices_futures 
+                WHERE token = '`+token+`'
+                ORDER BY price
+                `;
+        //console.log("2.get_spread_data token = "+token, sql);
+        res = await pool.query(sql);
+        //console.log("2.get_spread_data token = "+token, res.rows);
+        if (res.rows.length >= 2){
+            var d_min = res.rows.shift();
+            var d_max = res.rows.pop();
+            var spread = ((parseFloat(d_max.price) - parseFloat(d_min.price)) / parseFloat(d_max.price) * 100).toFixed(2);
+            if (spread >= min_spread) {
+                f = ( parseFloat(d_max.funding_rate) - parseFloat(d_min.funding_rate)).toFixed(2);
+                s = d_min.token+"\t"+d_min.exchange+" LONG "+parseFloat(d_min.price)+"\t"+d_max.exchange+" SHORT "+parseFloat(d_max.price)+"\tSPREAD: "+spread+"\tFUNDING: "+f;
+                spread_data.push({"str": s, "spread": spread });
+            }
+        }
+        
+        //process.exit(0);
+    } catch(e){
+        throw new Error("Failed get_spread_data: \n"+e.message);
+    }    
+}
+
+async function get_spread(){
+    var sql, res;
+    try {
+        console.log(getDateTime(), ">get_spread", getDateTime()); 
+        spread_data = [];
+        sql = `
+            SELECT 
+            t.token
+            FROM 
+            (
+            SELECT token, price FROM prices_spot
+            UNION ALL
+            SELECT token, price FROM prices_futures
+            ) AS t
+            WHERE (t.price > 0)
+            GROUP BY t.token
+            HAVING (((MAX(t.price) - MIN(t.price)) / MAX(t.price)) >= `+parseFloat(process.env.min_spread)+`)
+            ORDER BY t.token;`;
+//console.log("get_spread",sql);        
+        res = await pool.query(sql, []);
+        await Promise.all(
+            res.rows.map(async (d) => {
+                await get_spread_data(d.token);
+            })
+        );
+
+        // sort by spread
+        spread_data.sort( function(a, b) {
+            if (a.spread < b.spread) {
+               return -1;
+            }
+            if (a.spread > b.spread) {
+               return 1;
+            }
+            return 0;            
+        });
+        
+        res = [];
+        for (var i = 0; i < spread_data.length; i++){
+            res.push(spread_data[i].str);
+        }
+        
+        spread_data = [];
+
+        const filename = process.env.spread_file;
+        try{
+          fs.unlinkSync(filename);  
+        } catch(e){}
+        fs.writeFileSync(filename, res.join("\n"));
+
+        console.log(getDateTime(), "<get_spread", getDateTime()); 
+    } catch(e){
+        throw new Error("Failed get_spread: \n"+e.message);
+    }     
+    //fs.writeFileSync("spread.json", JSON.stringify(res.rows));
+
 }
 
 async function run(){
@@ -301,7 +408,7 @@ async function run(){
         run_id = parseInt(res.rows[0].run_id);
         
         
-        console.log("exchange_data",exchange_data);
+//        console.log("exchange_data",exchange_data);
         
         for (var key in exchange_data){
             if (key == "MEXC") {
@@ -322,20 +429,22 @@ async function run(){
         }
 
         sql = "UPDATE runs SET finished = NOW(), progress='All Done!' WHERE id = " + run_id;
-console.log(sql);        
+//console.log(sql);        
         await pool.query(sql);
         
-        sql = "DELETE FROM runs WHERE id < " + (run_id-1);
-console.log(sql);        
+        sql = "DELETE FROM runs WHERE (id < " + run_id+")";
+//console.log(sql);        
         await pool.query(sql);
 
-        sql = "DELETE FROM prices_futures WHERE run_id < " + (run_id-1);
-console.log(sql);        
+        sql = "DELETE FROM prices_futures WHERE (price <= 0) OR (run_id < " + run_id+")";
+//console.log(sql);        
         await pool.query(sql);
         
-        sql = "DELETE FROM prices_spot WHERE run_id < " + (run_id-1);
-console.log(sql);        
+        sql = "DELETE FROM prices_spot WHERE (price <= 0) OR (run_id < " + run_id+")";
+//console.log(sql);        
         await pool.query(sql);
+        
+        await get_spread();
         
         console.log(getDateTime(), "<run", getDateTime());    
         
@@ -343,18 +452,14 @@ console.log(sql);
         console.log(getDateTime(), "<crypto_bot ERROR in run! \n"+e.message, getDateTime());    
         process.exit(0);
     }
-    is_running = false;
-    
-    
-    process.exit();
-    
+    is_running = false;    
 }
 
 async function check_run(){
     if (!is_running) {        
         const sql = "SELECT COUNT(*) AS qty FROM runs WHERE finished::time with time zone >= current_time - interval '" + process.env.period_minutes + "' minute";
 
-        console.log("sql", sql);    
+       // console.log("sql", sql);    
         const res = await pool.query(sql, []); 
 
         const qty = parseInt(res.rows[0].qty);
@@ -367,7 +472,10 @@ async function check_run(){
 new Promise(async function (resolve, reject) {
     console.log(getDateTime(), ">crypto_bot main version = " + version, getDateTime());    
     await init();
-    
+   
+   // await run();
+   // await get_spread();
+    //process.exit(0);
     
    // await test_gate();
     //await test_mexc();

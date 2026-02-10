@@ -57,8 +57,24 @@ UPDATE exchanges SET settings = '{"api_url":"https://api.mexc.com/api/"}' WHERE 
 
 SELECT * FROM prices_futures;
 
+
+UPDATE exchanges SET settings = '{"api_url":"https://api.gateio.ws"}' WHERE id = 3;
+
+
+SELECT 
+t.token, MIN(t.price) AS price_min, MAX(t.price) AS price_max, ((MAX(t.price) - MIN(t.price)) / MAX(t.price)) AS spread
+FROM 
+(
+SELECT token, price FROM prices_spot
+UNION ALL
+SELECT token, price FROM prices_futures
+) AS t
+WHERE (t.price > 0)
+GROUP BY t.token
+HAVING (((MAX(t.price) - MIN(t.price)) / MAX(t.price)) > 0.02)
+ORDER BY spread DESC;
+
+
 DELETE FROM runs;
 DELETE FROM prices_futures;
 DELETE FROM prices_spot;
-
-UPDATE exchanges SET settings = '{"api_url":"https://api.gateio.ws"}' WHERE id = 3;
