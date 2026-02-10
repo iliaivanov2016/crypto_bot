@@ -14,13 +14,14 @@ import axios from "axios";
 import { sha256, sha224 } from 'js-sha256';
 import crypto from 'crypto';
 
-const version = "1.0";
+const version = "1.2";
 
 var pool = null;
 var exchange_data;
 var is_running = false;
 var run_id = 0;
 var spread_data = [];
+var proxy_settings;
 
 function getDateTime() {
     var dt = new Date();
@@ -45,6 +46,17 @@ async function init(){
       connectionTimeoutMillis:  15000,
       idleTimeoutMillis:        30000 
     };
+    
+    proxy_settings = { 
+        protocol: "http", 
+        host: process.env.proxy_host,
+        port: process.env.proxy_port,
+        auth: {
+            username: process.env.proxy_user,
+            password: process.env.proxy_password
+        }
+    };
+console.log(proxy_settings);    
     
     pool = new Pool( args ); 
         
@@ -238,7 +250,8 @@ async function run_gate(){
     
     url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
     args = {
-        headers: sign_gate("GET", prefix + endpoint, "", "")
+        headers: sign_gate("GET", prefix + endpoint, "", ""),
+        proxy: proxy_settings
     };
     
 //    console.log(url, args);    
@@ -261,7 +274,8 @@ async function run_gate(){
     
     url = exchange_data.GATE.settings.api_url + prefix + endpoint;    
     args = {
-        headers: sign_gate("GET", prefix + endpoint, "", "")
+        headers: sign_gate("GET", prefix + endpoint, "", ""),
+        proxy: proxy_settings
     };
     
 //    console.log(url, args);    
@@ -291,6 +305,7 @@ async function get_spread_data(token){
     var sql, res, s, f;
     const min_spread = parseFloat(process.env.min_spread * 100);
     try {
+        /*
         sql = `SELECT 
                 token, price, (SELECT name FROM exchanges WHERE id = exchange_id) AS exchange, change_percent
                 FROM prices_spot 
@@ -305,10 +320,11 @@ async function get_spread_data(token){
             var d_max = res.rows.pop();
             var spread = Math.round( (parseFloat(d_max.price) - parseFloat(d_min.price)) / parseFloat(d_max.price) * 100, 1);
             if (spread >= min_spread) {
-                s = d_min.token+"\t"+d_min.exchange+" BUY "+parseFloat(d_min.price)+"\t"+d_max.exchange+" SELL "+ parseFloat(d_max.price)+ "\tSPREAD: "+spread+"\tCHANGE 24h: "+parseFloat(d_min.change_percent).toFixed(2);
+                s = d_min.token+"\t"+d_min.exchange+" BUY "+parseFloat(d_min.price).toFixed(8)+"\t"+d_max.exchange+" SELL "+ parseFloat(d_max.price).toFixed(8)+ "\tSPREAD: "+spread+"\tCHANGE 24h: "+parseFloat(d_min.change_percent).toFixed(2);
                 spread_data.push({"str": s, "spread": spread });
             }
         }
+        */
         
         sql = `SELECT 
                 token, price, (SELECT name FROM exchanges WHERE id = exchange_id) AS exchange, funding_rate 
@@ -325,7 +341,7 @@ async function get_spread_data(token){
             var spread = ((parseFloat(d_max.price) - parseFloat(d_min.price)) / parseFloat(d_max.price) * 100).toFixed(2);
             if (spread >= min_spread) {
                 f = ( parseFloat(d_max.funding_rate) - parseFloat(d_min.funding_rate)).toFixed(2);
-                s = d_min.token+"\t"+d_min.exchange+" LONG "+parseFloat(d_min.price)+"\t"+d_max.exchange+" SHORT "+parseFloat(d_max.price)+"\tSPREAD: "+spread+"\tFUNDING: "+f;
+                s = d_min.token+"\t"+d_min.exchange+" LONG "+parseFloat(d_min.price).toFixed(8)+"\t"+d_max.exchange+" SHORT "+parseFloat(d_max.price).toFixed(8)+"\tSPREAD: "+spread+"\tFUNDING: "+f;
                 spread_data.push({"str": s, "spread": spread });
             }
         }
@@ -337,7 +353,7 @@ async function get_spread_data(token){
 }
 
 async function get_spread(){
-    var sql, res;
+    var sql, res, s;
     try {
         console.log(getDateTime(), ">get_spread", getDateTime()); 
         spread_data = [];
@@ -362,13 +378,13 @@ async function get_spread(){
             })
         );
 
-        // sort by spread
+        // sort by spread desc
         spread_data.sort( function(a, b) {
             if (a.spread < b.spread) {
-               return -1;
+               return ;
             }
             if (a.spread > b.spread) {
-               return 1;
+               return -1;
             }
             return 0;            
         });
@@ -384,7 +400,25 @@ async function get_spread(){
         try{
           fs.unlinkSync(filename);  
         } catch(e){}
-        fs.writeFileSync(filename, res.join("\n"));
+        
+        s = ""+(new Date())+"\n"+res.join("\n");
+
+        // find positive funding with spot
+        sql = `
+                SELECT token, (SELECT name FROM exchanges WHERE id = exchange_id) AS exchange, funding_rate 
+                FROM prices_futures 
+                WHERE (funding_rate >= 0.5)
+                AND (EXISTS (SELECT token FROM prices_spot AS sp WHERE sp.token = prices_futures.token))
+                ORDER BY funding_rate DESC
+                `;
+        res = await pool.query(sql, []);
+        
+        s+="\n\n";
+        for (var i = 0; i < res.rows.length; i++){
+            s += res.rows[i].token+" "+res.rows[i].exchange+"\t FUNDING "+parseFloat(res.rows[i].funding_rate).toFixed(2)+"\n";
+        }
+                
+        fs.writeFileSync(filename, s);
 
         console.log(getDateTime(), "<get_spread", getDateTime()); 
     } catch(e){
@@ -473,18 +507,19 @@ new Promise(async function (resolve, reject) {
     console.log(getDateTime(), ">crypto_bot main version = " + version, getDateTime());    
     await init();
    
-   // await run();
+    await run();
    // await get_spread();
-    //process.exit(0);
+    process.exit(0);
+    
     
    // await test_gate();
     //await test_mexc();
-    
+    /*
     setInterval(async function(){
         await check_run();
     }, 10000);
     await check_run();
-    
+    */
 //    await pool.end();
 //    process.exit(0);
     
