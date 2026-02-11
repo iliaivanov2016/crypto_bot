@@ -11,10 +11,9 @@ import { fileURLToPath } from 'url';
 import { Pool } from 'pg'
 import cmd from 'node-cmd';
 import axios from "axios";
-import { sha256, sha224 } from 'js-sha256';
 import crypto from 'crypto';
 
-const version = "1.2";
+const version = "1.3";
 
 var pool = null;
 var exchange_data;
@@ -221,7 +220,7 @@ async function save_gate_spot_price(data){
             +(""+s.replace('_USDT','')).trim()+"',"
             +exchange_data.GATE.id+","
             +data.last+","
-            +(data.change_percentage)+","
+            +(data.change_percentage*100)+","
             +run_id+")";
         await pool.query(sql);
     }
@@ -235,6 +234,32 @@ async function save_gate_futures_price(data){
             +exchange_data.GATE.id+","
             +data.index_price+","
             +(data.funding_rate*100)+","
+            +run_id+")";
+        await pool.query(sql);
+    }
+}
+
+async function save_bybit_spot_price(data){
+    const s = (""+data.symbol).trim();    
+    if ((s.indexOf("USDT") >= 0) && (parseInt(data.volume24h) > 0)){
+        const sql = "INSERT INTO prices_spot (token,exchange_id,price,change_percent,run_id) VALUES ('"
+            +(""+s.replace('USDT','')).trim()+"',"
+            +exchange_data.BYBIT.id+","
+            +data.lastPrice+","
+            +(data.price24hPcnt*100)+","
+            +run_id+")";
+        await pool.query(sql);
+    }
+}
+
+async function save_bybit_futures_price(data){
+    const s = (""+data.symbol).trim();    
+    if (s.indexOf("USDT") >= 0){
+        const sql = "INSERT INTO prices_futures (token,exchange_id,price,funding_rate,run_id) VALUES ('"
+            +(""+s.replace('USDT','')).trim()+"',"
+            +exchange_data.BYBIT.id+","
+            +data.lastPrice+","
+            +(data.fundingRate*100)+","
             +run_id+")";
         await pool.query(sql);
     }
@@ -298,6 +323,48 @@ async function run_gate(){
 }
 
 async function run_bybit(){
+    console.log(getDateTime(), ">run_bybit run_id = " + run_id, getDateTime());    
+    
+    var args = null, sql, res, url, params;
+    
+    // get futures prices
+    params = "category=spot";
+    url = exchange_data.BYBIT.settings.api_url + "/v5/market/tickers?" + params;
+    
+    args = {
+        headers: get_bybit_header(params)
+    };
+
+    res = await axios.get(url, args);
+    
+    try {
+        await Promise.all(
+            res.data.result.list.map(async (d) => {
+                await save_bybit_spot_price(d);
+            })
+        );
+    } catch(e){
+        throw new Error("Failed to get Bybit spot prices: \n"+url+"\n"+e.message);
+    }       
+
+    params = "category=linear";
+    url = exchange_data.BYBIT.settings.api_url + "/v5/market/tickers?" + params;
+    
+    args = {
+        headers: get_bybit_header(params)
+    };
+
+    res = await axios.get(url, args);
+    try {
+        await Promise.all(
+            res.data.result.list.map(async (d) => {
+                await save_bybit_futures_price(d);
+            })
+        );
+    } catch(e){
+        throw new Error("Failed to get Bybit futures prices: \n"+url+"\n"+e.message);
+    }         
+    console.log(getDateTime(), "<run_bybit run_id = " + run_id, getDateTime());    
     
 }
 
@@ -503,10 +570,58 @@ async function check_run(){
     }
 }
 
+async function get_bybit_header(params){
+    var ts = new Date().getTime();
+    var recv_window = "5000";
+    var s = "" + ts + exchange_data.BYBIT.key + recv_window + params;
+    var sign = crypto.createHash('sha256').update(s).digest('hex');
+    var request_headers = { 
+        "X-BAPI-API-KEY":       exchange_data.BYBIT.key,
+        "X-BAPI-TIMESTAMP":     ts,
+        "X-BAPI-SIGN":          sign        
+    };
+    return request_headers;
+}
+
+async function test_bybit(){
+    console.log(getDateTime(), ">test_bybit run_id = " + run_id, getDateTime());    
+    
+    var args = null, sql, res, url, params;
+    
+    // get futures prices
+    params = "category=spot";
+    url = exchange_data.BYBIT.settings.api_url + "/v5/market/tickers?" + params;
+    
+    args = {
+        headers: get_bybit_header(params)
+    };
+console.log(url,args);   
+
+    res = await axios.get(url, args);
+    
+    fs.writeFileSync("bybit_spot.json", JSON.stringify(res.data));
+
+    params = "category=linear";
+    url = exchange_data.BYBIT.settings.api_url + "/v5/market/tickers?" + params;
+    
+    args = {
+        headers: get_bybit_header(params)
+    };
+console.log(url,args);   
+
+    res = await axios.get(url, args);
+    
+    fs.writeFileSync("bybit_futures.json", JSON.stringify(res.data));
+    
+    process.exit(0);
+    
+}
+
 new Promise(async function (resolve, reject) {
     console.log(getDateTime(), ">crypto_bot main version = " + version, getDateTime());    
     await init();
    
+   //await test_bybit();
     await run();
    // await get_spread();
     process.exit(0);
