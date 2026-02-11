@@ -1,0 +1,1 @@
+node crypto_bot.js > log.txt
