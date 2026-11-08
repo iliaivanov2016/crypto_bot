@@ -78,3 +78,54 @@ ORDER BY spread DESC;
 DELETE FROM runs;
 DELETE FROM prices_futures;
 DELETE FROM prices_spot;
+
+
+
+UPDATE exchanges SET settings = '{"api_url":"https://api.bybit.com"}' WHERE id = 1;
+
+-- 08.11.2026
+DROP TABLE tokens_rsi_trading;
+CREATE TABLE tokens_rsi_trading (
+                                    token VARCHAR NOT NULL PRIMARY KEY,
+                                    percent FLOAT NOT NULL
+);
+INSERT INTO tokens_rsi_trading (token, percent)
+VALUES
+    ('SOL', 10.00),
+    ('LINK', 10.00),
+    ('NEAR', 15.00),
+    ('AVAX', 15.00),
+    ('SUI', 15.00),
+    ('SHIB', 20.00),
+    ('AAVE', 10.00),
+    ('ONDO', 10.00),
+    ('MNT', 10.00),
+    ('ENA', 15.00),
+    ('PEPE', 15.00),
+    ('ARB', 10.00),
+    ('STRK', 10.00),
+    ('ZRO', 15.00);
+
+ALTER TABLE tokens_rsi_trading
+    ADD COLUMN rsi4h FLOAT,
+ADD COLUMN updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+CREATE OR REPLACE FUNCTION update_tokens_rsi_trading_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated = CURRENT_TIMESTAMP;
+RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_tokens_rsi_trading_updated
+    BEFORE UPDATE ON tokens_rsi_trading
+    FOR EACH ROW
+    EXECUTE FUNCTION update_tokens_rsi_trading_timestamp();
+
+ALTER TABLE tokens_rsi_trading ADD COLUMN api_time TIMESTAMP;
+
+ALTER TABLE tokens_rsi_trading ADD COLUMN price FLOAT NULL DEFAULT 0;
+ALTER TABLE tokens_rsi_trading ADD COLUMN percent24h FLOAT NULL DEFAULT 0;
+
+UPDATE tokens_rsi_trading SET rsi4h = NULL;
