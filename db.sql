@@ -129,3 +129,47 @@ ALTER TABLE tokens_rsi_trading ADD COLUMN price FLOAT NULL DEFAULT 0;
 ALTER TABLE tokens_rsi_trading ADD COLUMN percent24h FLOAT NULL DEFAULT 0;
 
 UPDATE tokens_rsi_trading SET rsi4h = NULL;
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('ETH', 5, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('SPY', 5, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('INTC', 5, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('NVDA', 5, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('GOOGL', 5, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('SNDK', 5, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('ASTER', 10, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('HYPE', 15, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('ZEC', 15, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('LIT', 10, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('MRVL', 5, NULL, NULL, NULL, NULL);
