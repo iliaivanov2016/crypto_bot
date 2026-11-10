@@ -20,3 +20,12 @@ tg_bot_channel_id="@modcodingtest1980"
 tg_bot_api_url="https://api.telegram.org/bot{TOKEN}/"
 bybit_api_key=""
 bybit_api_url="https://api.bybit.com"
+
+================================================
+
+tg_bot_token="8489163204:AAGCMFPznrAcVf3bMSUGQxRrqkm4mP_r77g"
+tg_bot_channel_id="@modcodingtest1980"
+tg_bot_api_url="https://api.telegram.org/bot{TOKEN}/"
+bybit_api_url="https://api.bybit.com"
+rsi4h_tokens="XAU,CL,BTC,ETH,SOL,MNT,ASTER,BNB,XLM,XRP,DOGE"
+rsi15m_tokens="ARB,ZEC,HYPE,NEAR,AAVE,AVAX,SUI,SHIB,ENA,PEPE,ZRO,SNDK,INTC,GOOGL,MRVL,SKHYNIX,AMDSTOCK,NVDA,AMZN,WDC,TAO,HBAR,RENDER,PUMP,SEI,LTC,STRK,LINK,ONDO,LIT,ADA,OP,APT,UNI"
