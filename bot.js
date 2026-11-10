@@ -1,6 +1,7 @@
 /*
 node bot.js > log.txt
- */
+pm2 start /home/ivanov_iv/node/bot.js -o /home/ivanov_iv/node/log.txt -e /home/ivanov_iv/node/errors.txt --name="test bot"
+*/
 import fs from 'fs';
 import axios from "axios";
 import crypto from 'crypto';
@@ -233,18 +234,30 @@ async function getRSI(symbol, interval = 240, mode="spot",  period = PERIOD) {
 }
 
 async function sendMessage(msg){
+    const proxy_settings = {
+        protocol: "http",
+        host: process.env.proxy_host,
+        port: process.env.proxy_port,
+        auth: {
+            username: process.env.proxy_user,
+            password: process.env.proxy_password
+        }
+    };
     let url = process.env.tg_bot_api_url.replace('{TOKEN}', process.env.tg_bot_token);
     let parameters = {
         'method': "sendMessage",
         'chat_id': process.env.tg_bot_channel_id,
         'text': msg
     };
-    const response = await axios.post(url, parameters, {
+    const args = {
         headers: {
             'Content-Type': 'application/json'
-        }
-    });
-    console.log(response.data, response.status, response.statusText);
+        },
+        proxy: proxy_settings
+    };
+    console.log(getDateTime(), "send message...", args);
+    const response = await axios.post(url, parameters, args);
+    console.log(getDateTime(), "send message... Done!", response.data, response.status, response.statusText);
 }
 
 async function run(){
