@@ -6,16 +6,16 @@ import fs from 'fs';
 import axios from "axios";
 import crypto from 'crypto';
 
-const version = "1.2";
+const version = "1.3";
 
-let pool = null;
 let prices = null;
 let is_running = false;
 let start_minute = 0;
 let start_hour = 0;
 
 const PERIOD = 14;
-const MIN_RSI_SEND_MESSAGE = 35;
+const MIN_RSI_SEND_MESSAGE_1D = 40;
+const MIN_RSI_SEND_MESSAGE_4H = 35;
 
 function getDateTime() {
     let dt = new Date();
@@ -32,7 +32,8 @@ function roundNumber(num){
 function createPriceObject(){
     return {
         "price":        0,
-        "rsi":          0,
+        "rsi1d":        0,
+        "rsi4h":        0,
         "percent":      0,
     }
 }
@@ -40,26 +41,19 @@ function createPriceObject(){
 async function createPrices(){
     let ar, token;
     prices =  {
+        "tokens": {},
         "4h": {
             "messages": []
         },
-        "15m": {
+        "1d": {
             "messages": []
         },
     };
-    ar = (""+process.env.rsi4h_tokens).split(",");
+    ar = (""+process.env.tokens).split(",");
     for (let i = 0; i < ar.length; i++) {
         token = (""+ar[i]).trim();
         if (token.length > 0){
-            prices["4h"][ token ] = createPriceObject();
-        }
-    }
-    ar = (""+process.env.rsi15m_tokens).split(",");
-    for (let i = 0; i < ar.length; i++) {
-        token = (""+ar[i]).trim();
-        if (token.length > 0){
-            prices["15m"][ token ] = createPriceObject();
-            prices["4h"][ token ] = createPriceObject();
+            prices["tokens"][ token ] = createPriceObject();
         }
     }
 }
@@ -79,44 +73,31 @@ async function get_bybit_header(params){
 
 async function updateToken(mode, token, price, percent24h){
     let msg;
-    let rsi15 = -1;
-    let rsi4 = -1;
-    let minute_token = prices["15m"].hasOwnProperty(token);
-    let long_token = prices["4h"].hasOwnProperty(token);
+    let rsi1d = -1;
+    let rsi4h = -1;
 
-    if (minute_token || long_token){
-        console.log(getDateTime(), ">updateToken "+token, price, percent24h, minute_token, long_token)
+    if (!prices["tokens"].hasOwnProperty(token)) {
+        return;
     }
 
-    if (minute_token) {
-        if (prices["15m"][token].price == 0) {
-            rsi15 = await getRSI(token+"USDT", 15, mode,  PERIOD);
-            prices["15m"][token].price = price;
-            prices["15m"][token].rsi = rsi15;
-            prices["15m"][token].percent = percent24h;
-            rsi4 = await getRSI(token+"USDT", 240, mode,  PERIOD);
-            prices["4h"][token].price = price;
-            prices["4h"][token].rsi = rsi4;
-            prices["4h"][token].percent = percent24h;
-            if ((rsi15 <= MIN_RSI_SEND_MESSAGE) && (rsi15 >= 0)){
-                msg = token + " RSI = " + rsi15 + " Price = " + price + " Percent (24h) = " + percent24h;
-                prices["15m"].messages.push(msg);
-            }
-            if ((rsi4 <= MIN_RSI_SEND_MESSAGE) && (rsi4 >= 0)){
-                msg = token + " RSI = " + rsi4 + " Price = " + price + " Percent (24h) = " + percent24h;
-                prices["4h"].messages.push(msg);
-            }
+    console.log(getDateTime(), ">updateToken "+token, mode, price, percent24h);
+
+    if (prices["tokens"][token].price == 0) {
+        rsi1d = await getRSI(token+"USDT", "D", mode,  PERIOD);
+        rsi4h = await getRSI(token+"USDT", 240, mode,  PERIOD);
+        prices["tokens"][token].price = price;
+        prices["tokens"][token].percent = percent24h;
+        prices["tokens"][token].rsi1d = rsi1d;
+        prices["tokens"][token].rsi4h = rsi4h;
+
+        if ((rsi1d <= MIN_RSI_SEND_MESSAGE_1D) && (rsi1d >= 0)){
+            msg = token + "\tRSI 1D = " + rsi1d + " Price = " + price + " Percent (24h) = " + percent24h;
+            prices["1d"].messages.push(msg);
         }
-    } else if (long_token) {
-        if (prices["4h"][token].price == 0) {
-            rsi4 = await getRSI(token + "USDT", 240, mode, PERIOD);
-            prices["4h"][token].price = price;
-            prices["4h"][token].rsi = rsi4;
-            prices["4h"][token].percent = percent24h;
-            if ((rsi4 <= MIN_RSI_SEND_MESSAGE) && (rsi4 >= 0)){
-                msg = token + " RSI = " + rsi4 + " Price = " + price + " Percent (24h) = " + percent24h;
-                prices["4h"].messages.push(msg);
-            }
+
+        if ((rsi4h <= MIN_RSI_SEND_MESSAGE_4H) && (rsi4h >= 0)){
+            msg = token + "\tRSI 4H = " + rsi4h + " Price = " + price + " Percent (24h) = " + percent24h;
+            prices["4h"].messages.push(msg);
         }
     }
 }
@@ -193,7 +174,9 @@ async function getRSI(symbol, interval = 240, mode="spot",  period = PERIOD) {
         candles.reverse();
 
         // Remove currently forming candle
-//    candles = candles.slice(0, -1);
+        if ((interval <= 240) || ((interval > 240) && (start_hour == 0))) {
+            candles = candles.slice(0, -1);
+        }
 
         const closes = candles.map(c => Number(c[4]));
 
@@ -284,14 +267,14 @@ async function run(){
         }catch(err){}
         fs.writeFileSync("res.json", JSON.stringify(prices));
 
-        if ((start_minute == 0) && (prices["4h"].messages.length > 0)){
-            await sendMessage("\n\nRSI 4 hours:\n"+prices["4h"].messages.join("\n"));
-            console.log(getDateTime(), "Sent 4 hours!", prices["4h"].messages.join("\n"));
+        if (prices["4h"].messages.length > 0){
+            await sendMessage("\n\nCRYPTO-BOT RSI 4H:\n"+prices["4h"].messages.join("\n"));
+            console.log(getDateTime(), "Sent 4H!", prices["4h"].messages.join("\n"));
         }
 
-        if (prices["15m"].messages.length > 0){
-            await sendMessage("\n\nRSI 15 minutes:\n"+prices["15m"].messages.join("\n"));
-            console.log(getDateTime(), "Sent 15 minutess!", prices["15m"].messages.join("\n"));
+        if (prices["1d"].messages.length > 0){
+            await sendMessage("\n\nCRYPTO-BOT RSI 1D:\n"+prices["1d"].messages.join("\n"));
+            console.log(getDateTime(), "Sent 1D!", prices["1d"].messages.join("\n"));
         }
 
         console.log(getDateTime(), "Run finished!");
@@ -315,9 +298,9 @@ async function check_run(){
         start_hour = now.getUTCHours();
         start_minute = now.getUTCMinutes();
 
-        let need_run = (start_minute % 15 == 0);
+        let need_run = (start_minute == 0);
 
-   //     need_run = true;
+//        need_run = true;
 
         console.log(start_hour+":"+start_minute+" - need = " + need_run);
         if (need_run){
