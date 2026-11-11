@@ -108,7 +108,7 @@ async function updateToken(mode, token, price, percent24h){
             }
         }
     } else if (long_token) {
-        if (prices["15m"][token].price == 0) {
+        if (prices["4h"][token].price == 0) {
             rsi4 = await getRSI(token + "USDT", 240, mode, PERIOD);
             prices["4h"][token].price = price;
             prices["4h"][token].rsi = rsi4;
