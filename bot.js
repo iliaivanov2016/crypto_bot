@@ -6,7 +6,7 @@ import fs from 'fs';
 import axios from "axios";
 import crypto from 'crypto';
 
-const version = "1.1";
+const version = "1.2";
 
 let pool = null;
 let prices = null;
@@ -89,29 +89,35 @@ async function updateToken(mode, token, price, percent24h){
     }
 
     if (minute_token) {
-        rsi15 = await getRSI(token+"USDT", 15, mode,  PERIOD);
-        prices["15m"][token].price = price;
-        prices["15m"][token].rsi = rsi15;
-        prices["15m"][token].percent = percent24h;
-        rsi4 = await getRSI(token+"USDT", 240, mode,  PERIOD);
-        prices["4h"][token].price = price;
-        prices["4h"][token].rsi = rsi4;
-        prices["4h"][token].percent = percent24h;
+        if (prices["15m"][token].price == 0) {
+            rsi15 = await getRSI(token+"USDT", 15, mode,  PERIOD);
+            prices["15m"][token].price = price;
+            prices["15m"][token].rsi = rsi15;
+            prices["15m"][token].percent = percent24h;
+            rsi4 = await getRSI(token+"USDT", 240, mode,  PERIOD);
+            prices["4h"][token].price = price;
+            prices["4h"][token].rsi = rsi4;
+            prices["4h"][token].percent = percent24h;
+            if ((rsi15 <= MIN_RSI_SEND_MESSAGE) && (rsi15 >= 0)){
+                msg = token + " RSI = " + rsi15 + " Price = " + price + " Percent (24h) = " + percent24h;
+                prices["15m"].messages.push(msg);
+            }
+            if ((rsi4 <= MIN_RSI_SEND_MESSAGE) && (rsi4 >= 0)){
+                msg = token + " RSI = " + rsi4 + " Price = " + price + " Percent (24h) = " + percent24h;
+                prices["4h"].messages.push(msg);
+            }
+        }
     } else if (long_token) {
-        rsi4 = await getRSI(token+"USDT", 240, mode,  PERIOD);
-        prices["4h"][token].price = price;
-        prices["4h"][token].rsi = rsi4;
-        prices["4h"][token].percent = percent24h;
-    }
-
-    if (long_token && (rsi4 <= MIN_RSI_SEND_MESSAGE) && (rsi4 >= 0)){
-        msg = token + " RSI = " + rsi4 + " Price = " + price + " Percent (24h) = " + percent24h;
-        prices["4h"].messages.push(msg);
-    }
-
-    if (minute_token && (rsi15 <= MIN_RSI_SEND_MESSAGE) && (rsi15 >= 0)){
-        msg = token + " RSI = " + rsi15 + " Price = " + price + " Percent (24h) = " + percent24h;
-        prices["15m"].messages.push(msg);
+        if (prices["15m"][token].price == 0) {
+            rsi4 = await getRSI(token + "USDT", 240, mode, PERIOD);
+            prices["4h"][token].price = price;
+            prices["4h"][token].rsi = rsi4;
+            prices["4h"][token].percent = percent24h;
+            if ((rsi4 <= MIN_RSI_SEND_MESSAGE) && (rsi4 >= 0)){
+                msg = token + " RSI = " + rsi4 + " Price = " + price + " Percent (24h) = " + percent24h;
+                prices["4h"].messages.push(msg);
+            }
+        }
     }
 }
 
