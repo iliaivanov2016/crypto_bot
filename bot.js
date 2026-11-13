@@ -14,8 +14,8 @@ let start_minute = 0;
 let start_hour = 0;
 
 const PERIOD = 14;
-const MIN_RSI_SEND_MESSAGE_1D = 40;
-const MIN_RSI_SEND_MESSAGE_4H = 35;
+const MIN_RSI_SEND_MESSAGE_1D = 35;
+const MIN_RSI_SEND_MESSAGE_4H = 30;
 
 function getDateTime() {
     let dt = new Date();

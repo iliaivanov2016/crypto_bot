@@ -173,3 +173,8 @@ VALUES ('LIT', 10, NULL, NULL, NULL, NULL);
 INSERT INTO public.tokens_rsi_trading(
     token, percent, rsi4h, api_time, price, percent24h)
 VALUES ('MRVL', 5, NULL, NULL, NULL, NULL);
+
+
+INSERT INTO public.tokens_rsi_trading(
+    token, percent, rsi4h, api_time, price, percent24h)
+VALUES ('BTC', 5, NULL, NULL, NULL, NULL);
