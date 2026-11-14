@@ -1,8 +1,8 @@
 /*
 node tbot.js > log.txt
-pm2 start /home/ivanov_iv/node/t-bot/bot.js -o /home/ivanov_iv/node/t-bot/log.txt -e /home/ivanov_iv/node/t-bot/errors.txt --name="test bot 2"
+pm2 start /home/ivanov_iv/node/t-bot/tbot.js -o /home/ivanov_iv/node/t-bot/tlog.txt -e /home/ivanov_iv/node/t-bot/terrors.txt --name="t bot"  --node-args="--use-system-ca"
 
-node --use-system-ca tbot.js
+node --use-system-ca tbot.js > log.txt
 */
 import fs from 'fs';
 import axios from "axios";
@@ -21,7 +21,7 @@ const RSI_PERIOD = 14;
 
 const quotationToNumber = (q) => Number(q.units) + q.nano / 1e9;
 
-const version = "1.0";
+const version = "1.1";
 
 let api;
 let prices = null;
@@ -31,7 +31,9 @@ let start_hour = 0;
 
 const PERIOD = 14;
 const MIN_RSI_SEND_MESSAGE_1D = 40;
-const MIN_RSI_SEND_MESSAGE_4H = 40;
+const MIN_RSI_SEND_MESSAGE_4H = 35;
+const DELAY = 100; // 100 ms
+const MIN_HOUR = 9;
 
 function getDateTime() {
     let dt = new Date();
@@ -161,6 +163,8 @@ async function updateToken(ticker){
             prices["4h"].messages.push(msg);
         }
 
+        sleep(DELAY);
+
     } catch(e) {
         console.log("error "+ticker+"\n"+e.message);
     }
@@ -169,11 +173,17 @@ async function updateToken(ticker){
 async function getTinkoffPrices() {
     try {
         api = new TinkoffInvestApi({ token: process.env.t_token });
+
+        for (const ticker of prices.tickers) {
+            await updateToken(ticker);
+        }
+        /*
         await Promise.all(
             prices.tickers.map(async (ticker) => {
                 await updateToken(ticker);
             })
         );
+         */
     } catch(e){
         throw new Error("Error in getTinkoffPrices: \n"+e.message);
     }
@@ -252,18 +262,18 @@ async function check_run(){
 
         const now = new Date();
 
-        start_hour = now.getUTCHours();
+        start_hour = now.getHours();
         start_minute = now.getUTCMinutes();
 
-        let need_run = (start_minute == 1);
+        let need_run = (start_minute == 1) && (start_hour >= MIN_HOUR);
 
-        need_run = true;
+//        need_run = true;
 
         console.log(start_hour+":"+start_minute+" - need = " + need_run);
         if (need_run){
             is_running = true;
             await run();
-process.exit(0);
+//process.exit(0);
         }
     }
 }
