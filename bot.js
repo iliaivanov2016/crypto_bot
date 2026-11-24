@@ -6,7 +6,7 @@ import fs from 'fs';
 import axios from "axios";
 import crypto from 'crypto';
 
-const version = "1.5";
+const version = "1.6";
 
 let prices = null;
 let is_running = false;
@@ -14,9 +14,9 @@ let start_minute = 0;
 let start_hour = 0;
 
 const PERIOD = 14;
-const MIN_RSI_SEND_MESSAGE_1D = 35;
-const MIN_RSI_SEND_MESSAGE_1H = 35;
-const MIN_RSI_SEND_MESSAGE_15M = 45;
+const MIN_RSI_SEND_MESSAGE_1D = 32;
+const MIN_RSI_SEND_MESSAGE_1H = 32;
+const MIN_RSI_SEND_MESSAGE_15M = 32;
 
 function getDateTime() {
     let dt = new Date();
